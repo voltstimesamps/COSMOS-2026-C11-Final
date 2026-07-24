@@ -27,19 +27,23 @@ class Vehicle:
 
     def update_channel(self, radio_channel: int):
         radio.set_group(radio_channel)
-    
+
     def set_x(self, x_new): # Set internal x_pos to new x_pos
         self.x_pos = x_new
-
+        self.transmit_position()
+                
     def shift_x(self, dx):
         self.x_pos += dx # Shift inter x_pos by dx
-
+        self.transmit_position()
+        
     def set_y(self, y_new): # Set internal y_pos to new y_pos
         self.y_pos = y_new    
-
+        self.transmit_position()
+        
     def shift_y(self, dy):
         self.y_pos += dy # Shift inter x_pos by dx
-
+        self.transmit_position()
+        
     def transmit_position(self):
         # bits 0, 1 for vehicle id (4 possible IDs)
         # bits 2, 3, 4 for x position (5 possible positions)
