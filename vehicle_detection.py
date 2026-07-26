@@ -14,6 +14,7 @@ def vehicle_detection(goal_distance):
             speed += -10
         if (middle_matrix_distance > goal_distance):
             speed += 10
+    return speed
 
 # Variable definition and init
 middle_matrix_distance = 0
