@@ -1,9 +1,3 @@
-# Constants
-Kp = 40
-Kd = 20
-
-previous_error = 0
-
 def line_follow(speed: number, line_brightness: bool):
     global left_pos, right_pos, middle_pos, far_left_pos, far_right_pos
     global previous_error
@@ -72,21 +66,3 @@ def line_follow(speed: number, line_brightness: bool):
 
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.LEFT_MOTOR, maqueenPlusV2.MyEnumDir.FORWARD, left_speed)
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.RIGHT_MOTOR, maqueenPlusV2.MyEnumDir.FORWARD, right_speed)
-    
-# Init
-speed_turn = 0
-middle_pos = 0
-right_pos = 0
-left_pos = 0
-
-far_right_pos = 0
-far_left_pos = 0
-
-maqueenPlusV2.i2c_init()
-radio.set_group(37)
-
-# Loop
-def on_forever():
-    line_follow(100, False)
-
-basic.forever(on_forever)
