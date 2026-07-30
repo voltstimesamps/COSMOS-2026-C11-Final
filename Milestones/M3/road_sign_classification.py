@@ -1,9 +1,11 @@
 BASE_SPEED = 40
 MIN_CONTINUOUS_SIGNAL_FOR_CHANGE = 2
+BASE_CAPTURE_COOLDOWN = 500 # 0.5 second capture cooldown
 
 speed_mult = 1.0
 last_signal_class = -1
 continuous_signal_count = 0
+capture_cooldown = 0.0
 
 # Initialize components (Motors and Huskylens)
 maqueenPlusV2.i2c_init() # Connect to motors
@@ -24,7 +26,9 @@ def huskylens_integration():
     global speed_mult
     global last_signal_class
     global continuous_signal_count
+    global capture_cooldown
     
+
     # Get data
     huskylens.request()
 
@@ -57,6 +61,10 @@ def huskylens_integration():
     elif detection_class == 5: # SL 25
         speed_mult = 1.0
     continuous_signal_count = 0
+    
+    basic.pause(BASE_CAPTURE_COOLDOWN)
+    
+    music.play(music.tone_playable(100 * detection_class, music.beat(BeatFraction.WHOLE)), music.PlaybackMode.UNTIL_DONE)
 
     # Conduct the change
     set_motor_speeds(BASE_SPEED * speed_mult,BASE_SPEED * speed_mult)
