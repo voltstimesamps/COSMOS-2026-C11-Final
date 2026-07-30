@@ -8,7 +8,7 @@
 # - Low priority: have a themed face on each vehicle after scenario 0 is over
 
 class Vehicle:
-    def __init__(self,  vehicle_id: int, name:str, radio_channel: int=37):
+    def __init__(self, vehicle_id: int, name:str, black_threshold:int, radio_channel: int=37):
         radio.set_group(radio_channel)
         # police =      0b00 = 0
         # ambulance =   0b01 = 1
@@ -16,7 +16,7 @@ class Vehicle:
         # good =        0b11 = 3
         self.name = name
         self.vehicle_id = vehicle_id
-
+        self.black_threshold = black_threshold
         # Initalize positions with invalid position values
         # Only other vehicles positions will be stored
         self.positions = [-1,-1,-1,-1] 
@@ -28,16 +28,27 @@ class Vehicle:
         # 3 @   @   @
         # 4 @ @ @ @ @
 
+        self.vehicle_map = self.gen_blank_5x5()
+
         self.x_pos = 0 # Value between 0 and 4 (0b100) based on map above
         self.y_pos = 0 # Value between 0 and 4 (0b100) based on map above
         self.show_current_position()
         self.transmit_position()
-
+        
         self.scenario = 0
 
+    def gen_blank_5x5(self):
+        out = []
+        for x in range(5):
+            column = []
+            for y in range(5):
+                column.append(0)
+            out.append(column)
+        return out
+    
     def show_current_position(self):
-            basic.clear_screen()
-            led.plot(self.x_pos,self.y_pos)
+        basic.clear_screen()
+        led.plot(self.x_pos,self.y_pos)
 
     def set_x(self, x_new): # Set internal x_pos to new x_pos
         self.x_pos = x_new
@@ -71,7 +82,17 @@ class Vehicle:
                 self.execute_action(decode_action(encoded_num))
 
     def store_position(self, encoded_num: int):
-        self.positions[decode_id(encoded_num)] = decode_pos(encoded_num)
+        pos = decode_pos(encoded_num)
+        self.positions[decode_id(encoded_num)] = pos
+        self.update_position_array()
+
+    def update_position_array(self):
+        self.vehicle_map = self.gen_blank_5x5()
+        for pos in self.positions:
+            if pos == -1:
+                continue
+            x, y = decode_x(pos), decode_y(pos)
+            self.vehicle_map[x][y]
 
     def execute_action(self, action:int):
         if action == 0:
