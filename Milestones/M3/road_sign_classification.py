@@ -1,5 +1,5 @@
-BASE_SPEED = 50
-MIN_CONTINUOUS_SIGNAL_FOR_CHANGE = 5
+BASE_SPEED = 40
+MIN_CONTINUOUS_SIGNAL_FOR_CHANGE = 2
 
 speed_mult = 1.0
 last_signal_class = -1
@@ -12,8 +12,14 @@ huskylens.init_mode(protocolAlgorithm.OBJECTCLASSIFICATION) # Set to classify
 
 # Movement function
 def set_motor_speeds(left, right):
+        
+    basic.show_number((left + right) // 2)
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.LEFT_MOTOR, maqueenPlusV2.MyEnumDir.FORWARD, left)
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.RIGHT_MOTOR, maqueenPlusV2.MyEnumDir.Forward, right)
+
+def get_time_to_stop(current_speed):
+    C = 40000
+    return C // current_speed
 
 # Check
 def on_forever():
@@ -36,21 +42,23 @@ def on_forever():
         continuous_signal_count = 0
     continuous_signal_count += 1
     
-    basic.show_number(continuous_signal_count)
-
     # Don't change anything if signal count is too low
     if continuous_signal_count < MIN_CONTINUOUS_SIGNAL_FOR_CHANGE:
         return
     
     # If signal count is sufficient, then change accordingly
     if detection_class == 2: # STOP SIGN
-        speed_mult = 0.0
+        stop_in = get_time_to_stop(BASE_SPEED * speed_mult)
+        basic.pause(stop_in)
+        set_motor_speeds(0,0)
+        basic.pause(3000) # 3 second pause
     elif detection_class == 3: # SL 35
         speed_mult = 1.4
     elif detection_class == 4: # SL 45
         speed_mult = 1.8
     elif detection_class == 5: # SL 25
         speed_mult = 1.0
+    continuous_signal_count = 0
 
     # Conduct the change
     set_motor_speeds(BASE_SPEED * speed_mult,BASE_SPEED * speed_mult)
