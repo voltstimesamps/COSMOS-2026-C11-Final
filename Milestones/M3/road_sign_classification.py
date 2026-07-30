@@ -12,17 +12,15 @@ huskylens.init_mode(protocolAlgorithm.OBJECTCLASSIFICATION) # Set to classify
 
 # Movement function
 def set_motor_speeds(left, right):
-        
-    basic.show_number((left + right) // 2)
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.LEFT_MOTOR, maqueenPlusV2.MyEnumDir.FORWARD, left)
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.RIGHT_MOTOR, maqueenPlusV2.MyEnumDir.Forward, right)
 
 def get_time_to_stop(current_speed):
-    C = 40000
+    C = 40000 # C found through trial and error
     return C // current_speed
 
 # Check
-def on_forever():
+def huskylens_integration():
     global speed_mult
     global last_signal_class
     global continuous_signal_count
@@ -63,4 +61,4 @@ def on_forever():
     # Conduct the change
     set_motor_speeds(BASE_SPEED * speed_mult,BASE_SPEED * speed_mult)
 
-basic.forever(on_forever)
+basic.forever(huskylens_integration)
