@@ -8,7 +8,7 @@
 # - Low priority: have a themed face on each vehicle after scenario 0 is over
 
 class Vehicle:
-    def __init__(self, vehicle_id: int, name:str, black_threshold:int, radio_channel: int=37):
+    def __init__(self, vehicle_id: int, name: str, black_threshold: int, x_initial: int, y_initial: int, radio_channel: int=37):
         radio.set_group(radio_channel)
         # police =      0b00 = 0
         # ambulance =   0b01 = 1
@@ -30,8 +30,8 @@ class Vehicle:
 
         self.vehicle_map = self.gen_blank_5x5()
 
-        self.x_pos = 0 # Value between 0 and 4 (0b100) based on map above
-        self.y_pos = 0 # Value between 0 and 4 (0b100) based on map above
+        self.x_pos = x_initial # Value between 0 and 4 (0b100) based on map above
+        self.y_pos = y_initial # Value between 0 and 4 (0b100) based on map above
         self.show_current_position()
         self.transmit_position()
         
@@ -81,6 +81,9 @@ class Vehicle:
             if scenario == 0xe or self.vehicle_id == decode_id(encoded_num): 
                 self.execute_action(decode_action(encoded_num))
 
+    def at(self, x, y): # Returns true if this Vehicle is at (x,y)
+        return self.x_pos == x and self.y_pos == y
+
     def store_position(self, encoded_num: int):
         pos = decode_pos(encoded_num)
         self.positions[decode_id(encoded_num)] = pos
@@ -93,6 +96,48 @@ class Vehicle:
                 continue
             x, y = decode_x(pos), decode_y(pos)
             self.vehicle_map[x][y]
+
+    def interpret_tape(self, junction_action:int=-1):
+        x = self.x_pos
+        y = self.y_pos
+        if junction_action == -1:
+            if self.at(0,0) or self.at(1,0) or self.at(3,0) \
+                or self.at(1,2) or self.at(1,2):
+                x += 1
+            elif self.at(4,0) or self.at(4,0) or self.at(4,0)\
+                or self.at(2,1) or self.at(2,3):
+                y += 1
+            elif self.at(4,4) or self.at(3,4) or self.at(1,4):
+                x -= 1
+            elif self.at(0,4) or self.at(0,3) or self.at(0,1):
+                y -= 1
+        elif junction_action == 0: # Straightaway
+            if self.at(0,3):
+                y-=2
+            elif self.at(1,0):
+                x+=2
+            elif self.at(4,1):
+                y+=2
+            elif self.at(3,4):
+                x-=2
+        elif junction_action == 1: # forward->right
+            if self.at(0,3):
+                y-=1
+                x+=1
+            elif self.at(2,3):
+                y+=1
+                x-=1
+            elif self.at(1,0) or self.at(1,2) or self.at(3,2):
+                x+=1
+                y-=1
+        elif junction_action == 2: # forward->left
+            if self.at(2,1):
+                y+=1
+                x+=1
+
+        self.x_pos = x
+        self.y_pos = y
+        self.transmit_position()
 
     def execute_action(self, action:int):
         if action == 0:
@@ -185,3 +230,42 @@ def decode_x(encoded_num: int):
 
 def decode_y(encoded_num: int):
     return (Y_MASK & encoded_num)
+
+# Initialize vehicle object
+
+vehicle = Vehicle(..., ..., ..., ..., ..., ...)
+
+# Return true if vehicle with id vehicle_id is at a valid coordinate
+def is_at_valid_pos(vehicle_id: int):
+    return vehicle.positions[vehicle_id] >= 0
+
+def get_pos(vehicle_id: int):
+    return (get_x(vehicle_id), get_y(vehicle_id))
+
+def get_x(vehicle_id: int):
+    return decode_x(vehicle.positions[vehicle_id])
+
+def get_y(vehicle_id: int):
+    return decode_y(vehicle.positions[vehicle_id])
+
+# Radio functions 
+
+def on_received_number(received_number: int):
+    vehicle.interpret_information(received_number)
+
+# Forever loop
+
+def on_forever():
+    pass
+
+# Set-up 
+radio.on_received_number(on_received_number)
+
+# Initialize motors
+maqueenPlusV2.i2c_init()
+
+# IMPLEMENT PATH FINDING ALGORITHM
+
+# IMPLEMENT CODE SPECIFIC TO EACH VEHICLE
+
+basic.forever(on_forever)
