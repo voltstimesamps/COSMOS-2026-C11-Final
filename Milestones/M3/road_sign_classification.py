@@ -1,33 +1,81 @@
-BASE_SPEED = 40
-MIN_CONTINUOUS_SIGNAL_FOR_CHANGE = 2
-BASE_CAPTURE_COOLDOWN = 500 # 0.5 second capture cooldown
+# Constants
+# Huskylens Integration
+BASE_SPEED = 50
+MIN_CONTINUOUS_SIGNAL_FOR_CHANGE = 1
+BASE_CAPTURE_COOLDOWN = 0 # 0.5 second capture cooldown
+STOP_SIGN_COOLDOWN = 1000
 
+# Line tracking and proportional control integration
+Kp = 35
+Ki = 0.3
+Kd = 8
+STOP_DISTANCE = 10 # (cm)
+SLOW_DISTANCE = 15 # (cm)
+INTEGRAL_MAX = 10
+CAL_SAMPLE_MS = 500 # Sampling time
+LINE_THRESHOLD = 0.5
+BLACK_THRESHOLD = 1600
+
+# Variables
+# Huskylens Integration
 speed_mult = 1.0
 last_signal_class = -1
 continuous_signal_count = 0
 capture_cooldown = 0.0
+stop_sign_wait_until = 0
+# Line Tracking Integration
+middle_pos = 0
+right_pos = 0
+left_pos = 0
+previous_error = 0
+previous_nonzero_error = 0
+integral = 0
+
+#Background Values (dark blue background)
+left_bg = 0
+mid_bg = 0
+right_bg = 0
+
+#Blue Line Values(Light blue line)
+left_line = 0
+mid_line = 0
+right_line = 0
+
+# Follow Line Values (white line)
+left_fg = 0
+mid_fg = 0
+right_fg = 0
+
 
 # Initialize components (Motors and Huskylens)
 maqueenPlusV2.i2c_init() # Connect to motors
 huskylens.init_i2c() # Connect to Huskylens
-huskylens.init_mode(protocolAlgorithm.OBJECTCLASSIFICATION) # Set to classify
+huskylens.init_mode(protocolAlgorithm.ALGORITHM_TAG_RECOGNITION) # Set to classify
+# Initialize components (Line tracking)
+matrixLidarDistance.initialize(matrixLidarDistance.Addr.ADDR4, matrixLidarDistance.Matrix.OBS)
+radio.set_group(37)
+maqueenPlusV2.show_color(DigitalPin.P1, maqueenPlusV2.colors(maqueenPlusV2.NeoPixelColors.RED))
+calibrate_sensors()
+
 
 # Movement function
 def set_motor_speeds(left, right):
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.LEFT_MOTOR, maqueenPlusV2.MyEnumDir.FORWARD, left)
     maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.RIGHT_MOTOR, maqueenPlusV2.MyEnumDir.Forward, right)
 
+
+
 def get_time_to_stop(current_speed):
-    C = 40000 # C found through trial and error
+    C = 100000 # C found through trial and error, was 40000
     return C // current_speed
 
-# Check
+
 def huskylens_integration():
     global speed_mult
     global last_signal_class
     global continuous_signal_count
     global capture_cooldown
-    
+    global stop_sign_wait_until
 
     # Get data
     huskylens.request()
@@ -49,24 +97,204 @@ def huskylens_integration():
         return
     
     # If signal count is sufficient, then change accordingly
-    if detection_class == 2: # STOP SIGN
+    if detection_class == -1:
+        return
+    elif detection_class in (1, 2): # STOP SIGN
+        if control.millis() < stop_sign_wait_until:
+            return
+        temp = speed_mult
         stop_in = get_time_to_stop(BASE_SPEED * speed_mult)
         basic.pause(stop_in)
+        speed_mult = 0.0
         set_motor_speeds(0,0)
-        basic.pause(3000) # 3 second pause
-    elif detection_class == 3: # SL 35
-        speed_mult = 1.4
-    elif detection_class == 4: # SL 45
-        speed_mult = 1.8
-    elif detection_class == 5: # SL 25
+        basic.pause(3000) # 3 second pause before going again
+        speed_mult = temp
+        stop_sign_wait_until = control.millis() + 1000
+    elif detection_class in (3, 4): # SL 25
         speed_mult = 1.0
+    elif detection_class in (5,6): # SL 35
+        speed_mult = 1.4
+    elif detection_class in (7,8): # SL 45
+        speed_mult = 1.8
+
     continuous_signal_count = 0
     
     basic.pause(BASE_CAPTURE_COOLDOWN)
     
-    music.play(music.tone_playable(100 * detection_class, music.beat(BeatFraction.WHOLE)), music.PlaybackMode.UNTIL_DONE)
-
+    if detection_class != 1:
+        music.play(music.tone_playable(200 * ((detection_class + 1) / 2), music.beat(BeatFraction.WHOLE)), music.PlaybackMode.IN_BACKGROUND)
     # Conduct the change
-    set_motor_speeds(BASE_SPEED * speed_mult,BASE_SPEED * speed_mult)
+    # set_motor_speeds(BASE_SPEED * speed_mult,BASE_SPEED * speed_mult)
 
-basic.forever(huskylens_integration)
+
+
+
+
+
+
+def get_target_speed(base_speed):
+    matrixLidarDistance.get_data()
+    distance_mm = matrixLidarDistance.get_obstacle_distance(matrixLidarDistance.ObstacleSide.Front)
+    distance_cm = distance_mm / 10
+
+    if distance_cm <= STOP_DISTANCE:
+        return 0
+    elif distance_cm <= SLOW_DISTANCE:
+        return base_speed * ((distance_cm - STOP_DISTANCE) / (SLOW_DISTANCE - STOP_DISTANCE))
+    else:
+        return base_speed
+
+# Normalizes foreground and background values between 1 and 0 (Claude)
+def normalize(raw: number, bg: number, fg: number):
+    dif = fg - bg #Difference between foreground value (line to follow)and background value
+    if dif == 0:
+        return 0
+    value = (raw - bg) / dif
+    value = min(1, max(0, value))
+    return value
+
+
+def wait_for_button_press():
+    while not input.button_is_pressed(Button.A):
+        basic.pause(20)
+
+def sample_sensors(mode: string):
+    global left_bg, mid_bg, right_bg
+    global left_line, mid_line, right_line
+    global left_fg, mid_fg, right_fg
+
+    left_sum = 0
+    mid_sum = 0
+    right_sum = 0
+    count = 0
+
+    start = input.running_time()
+    while input.running_time() - start < CAL_SAMPLE_MS: # If the start time - real time < 500 --> sample
+        left_sum += maqueenPlusV2.read_line_sensor_data(maqueenPlusV2.MyEnumLineSensor.SENSOR_L1)
+        mid_sum += maqueenPlusV2.read_line_sensor_data(maqueenPlusV2.MyEnumLineSensor.SENSOR_M)
+        right_sum += maqueenPlusV2.read_line_sensor_data(maqueenPlusV2.MyEnumLineSensor.SENSOR_R1)
+        count += 1 # Increment sampling number
+        basic.pause(20)
+
+    # Get the average value for background, foreground and the line
+    if mode == "bg":
+        left_bg = left_sum / count
+        mid_bg = mid_sum / count
+        right_bg = right_sum / count
+    elif mode == "line":
+        left_line = left_sum / count
+        mid_line = mid_sum / count
+        right_line = right_sum / count
+    else:
+        left_fg = left_sum / count
+        mid_fg = mid_sum / count
+        right_fg = right_sum / count
+
+
+# (Claude)
+def pick_effective_bg(bg_val: number, line_val: number, fg_val: number):
+    if abs(fg_val - bg_val) < abs(fg_val - line_val):
+        return bg_val
+    else:
+        return line_val
+
+
+def calibrate_sensors():
+    global left_bg, mid_bg, right_bg
+
+    # Phase 1: plain track background (dark blue)
+    basic.show_string("BG")
+    wait_for_button_press()
+    sample_sensors("bg")
+    basic.show_icon(IconNames.YES)
+    basic.pause(500)
+
+    # Phase 2: light blue line
+    basic.show_string("LINE")
+    wait_for_button_press()
+    sample_sensors("line")
+    basic.show_icon(IconNames.YES)
+    basic.pause(500)
+
+    # Phase 3: the actual line to follow (white)
+    basic.show_string("FG")
+    wait_for_button_press()
+    sample_sensors("fg")
+    basic.show_icon(IconNames.YES)
+    basic.pause(500)
+
+    #
+    left_bg = pick_effective_bg(left_bg, left_line, left_fg)
+    mid_bg = pick_effective_bg(mid_bg, mid_line, mid_fg)
+    right_bg = pick_effective_bg(right_bg, right_line, right_fg)
+
+    basic.clear_screen()
+
+# Follows the line based on the given speed value
+def line_follow(speed: number):
+    global left_pos, right_pos, middle_pos
+    global previous_error, previous_nonzero_error, integral
+
+    left_raw = maqueenPlusV2.read_line_sensor_data(maqueenPlusV2.MyEnumLineSensor.SENSOR_L1)
+    right_raw = maqueenPlusV2.read_line_sensor_data(maqueenPlusV2.MyEnumLineSensor.SENSOR_R1)
+    middle_raw = maqueenPlusV2.read_line_sensor_data(maqueenPlusV2.MyEnumLineSensor.SENSOR_M)
+
+    left_pos = normalize(left_raw, left_bg, left_fg)
+    right_pos = normalize(right_raw, right_bg, right_fg)
+    middle_pos = normalize(middle_raw, mid_bg, mid_fg)
+
+    # --- ERROR CALCULATION ---
+    weight_sum = left_pos * -1 + middle_pos * 0 + right_pos * 1
+    active_sensors = left_pos + middle_pos + right_pos
+
+    on_left = left_pos > LINE_THRESHOLD
+    on_mid = middle_pos > LINE_THRESHOLD
+    on_right = right_pos > LINE_THRESHOLD
+
+    if not on_left and not on_mid and not on_right:
+        error = 3 if previous_nonzero_error > 0 else -3
+        integral = 0
+    elif on_left and not on_mid and on_right:
+        error = 3 if previous_nonzero_error > 0 else -3
+        integral = 0
+    else:
+        error = weight_sum / active_sensors
+
+    if error != 0:
+        previous_nonzero_error = error
+
+    # --- PID CONTROLLER ---
+    integral = integral + error
+    integral = min(integral, INTEGRAL_MAX)
+    integral = max(-INTEGRAL_MAX, integral)
+
+    d = error - previous_error
+    correction = Kp * error + Ki * integral + Kd * d
+    previous_error = error
+
+    left_speed = speed + correction
+    right_speed = speed - correction
+
+    left_speed = min(left_speed, 255)
+    left_speed = max(0, left_speed)
+    right_speed = min(right_speed, 255)
+    right_speed = max(0, right_speed)
+
+    return left_speed, right_speed
+def line_tracking():
+    speed = get_target_speed(BASE_SPEED)
+    left_speed, right_speed = line_follow(speed * speed_mult)
+    set_motor_speeds(left_speed, right_speed)
+def run_robot():
+    # 1. Check for traffic signs
+    huskylens_integration()
+    
+    # 2. Check line and obstacles, then drive
+    line_tracking()
+    
+    # 3. Give the I2C bus a tiny breathing room (crucial!)
+    basic.pause(10)
+
+# Start of code
+basic.forever(run_robot)
+
