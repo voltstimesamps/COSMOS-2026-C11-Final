@@ -11,6 +11,7 @@
 # Next 2 bits are for vehicle ID
 # Next 3 bits are for X position
 # Next 3 bits are for Y position
+ACTION_MASK = 0b1111000000000000
 SCENARIO_MASK = 0b111100000000
 ID_MASK = 0b11000000
 POS_MASK = 0b111111
@@ -23,10 +24,15 @@ Y_MASK = 0b111
 # Initalize each position to an invalid position value
 positions = [-1,-1,-1,-1]
 
+# Initialize history of actions
+actions = []
+
 # Scenario ID
 scenario_id = 0
 
 # Decode functions
+def decode_action(encoded_num: int):
+    return (ACTION_MASK & encoded_num) >> 12
 
 def decode_scenario(encoded_num: int):
     return (SCENARIO_MASK & encoded_num) >> 8
@@ -60,7 +66,18 @@ def get_y(vehicle_id: int):
 def store_position(encoded_num: int):
     positions[decode_id(encoded_num)] = decode_pos(encoded_num)
 
+def log_action(encoded_num: int):
+    actions.append(decode_action(encoded_num))
+
 # Radio Functions
+def transmit_action(vehicle_id:int, action:int):
+    send_num = action << 12
+    if vehicle_id == -1: # If invalid vehicle id, send action to ALL vehicles
+        send_num += 0xe << 8
+    else: # If valid vehicle id, send action to a specific vehicle
+        send_num += 0xf << 8
+        send_num += vehicle_id << 6
+    radio.send_number(send_num)
 
 def transmit_scenario(scenario_id):
     # Shift scenario ID over 8 bits so they are in correct position for decoding, then send
@@ -69,16 +86,19 @@ def transmit_scenario(scenario_id):
 def on_received_number(received_number: int):
     if received_number <= 0xff: # 0xff is the value of the highest possible position information
         store_position(received_number)
+        log_action(received_number)
         update_position_matrix()
-    else:
-        assert 1==0, "Not yet implemented!" # Guaranteed to raise error in code to terminate program
-
 # Input functions
 
 def on_button_pressed_a():
     global scenario_id
 
     scenario_id += 1
+
+    transmit_scenario(scenario_id)
+
+def on_button_pressed_b():
+    transmit_action(-1, 0xf) # Transmit to every vehicle, halt motors.
 
     transmit_scenario(scenario_id)
 
@@ -106,7 +126,4 @@ radio.set_group(...)
 radio.on_received_number(on_received_number)
 
 input.on_button_pressed(Button.A, on_button_pressed_a)
-
-while True:
-    # IMPLEMENT FOREVER LOGIC 
-    break
+input.on_button_pressed(Button.B, on_button_pressed_b)
