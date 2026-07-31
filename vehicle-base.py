@@ -70,6 +70,49 @@ radio.set_group(37)
 maqueenPlusV2.show_color(DigitalPin.P1, maqueenPlusV2.colors(maqueenPlusV2.NeoPixelColors.RED))
 
 # ============================================================
+# Telemetry
+# ============================================================
+import vehicle 
+
+vehicle = Vehicle.Vehicle(..., ..., ...)
+
+# Return true if vehicle with id vehicle_id is at a valid coordinate
+def is_at_valid_pos(vehicle_id: int):
+    return vehicle.positions[vehicle_id] >= 0
+
+def get_pos(vehicle_id: int):
+    return (get_x(vehicle_id), get_y(vehicle_id))
+
+def get_x(vehicle_id: int):
+    return Vehicle.decode_x(vehicle.positions[vehicle_id])
+
+def get_y(vehicle_id: int):
+    return Vehicle.decode_y(vehicle.positions[vehicle_id])
+
+
+# Radio functions 
+
+def on_received_number(received_number: int):
+    vehicle.interpret_information(received_number)
+
+# Input functions 
+
+def on_button_pressed_a():
+    if vehicle.scenario == 0:
+        vehicle.shift_x(1)
+        vehicle.show_current_position()
+    else:
+        maqueenPlusV2.control_motor_stop(maqueenPlusV2.MyEnumMotor.ALL_MOTOR)
+
+def on_button_pressed_b():
+    if vehicle.scenario == 0:
+        vehicle.shift_y(1)
+        vehicle.show_current_position() 
+    else:
+        pass
+        maqueenPlusV2.control_motor(maqueenPlusV2.MyEnumMotor.ALL_MOTOR, maqueenPlusV2.MyEnumDir.FORWARD, base_speed) # speed not final
+
+# ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
