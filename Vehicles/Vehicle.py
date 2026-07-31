@@ -95,7 +95,7 @@ class Vehicle:
             if pos == -1:
                 continue
             x, y = decode_x(pos), decode_y(pos)
-            self.vehicle_map[x][y]
+            self.vehicle_map[x][y] = 1
 
     def interpret_tape(self, junction_action:int=-1):
         x = self.x_pos
